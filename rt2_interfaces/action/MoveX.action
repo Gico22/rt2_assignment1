@@ -1,0 +1,6 @@
+float32 goal_x
+---
+bool success
+float32 final_x
+---
+float32 remaining_x
