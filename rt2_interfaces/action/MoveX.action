@@ -1,6 +1,11 @@
 float32 goal_x
+float32 goal_y
+float32 goal_theta
 ---
 bool success
 float32 final_x
+float32 final_y
+float32 final_theta
 ---
-float32 remaining_x
+float32 remaining_distance
+float32 remaining_theta
