@@ -5,9 +5,12 @@
 #include "geometry_msgs/msg/twist.hpp"
 #include "rt2_interfaces/action/move_x.hpp"
 #include <tf2/LinearMath/Quaternion.h>
-#include <atomic>   // thread-safe position_x_ 
+#include <atomic>   // thread-safe position
 #include <thread>   // std::thread for execute_callback
 #include <chrono>   
+#include <string>
+#include <cmath>
+#include <tf2/utils.h>
 
 namespace rt2_assignment
 {
@@ -18,7 +21,7 @@ public:
   using MoveX = rt2_interfaces::action::MoveX;
   using GoalHandle = rclcpp_action::ServerGoalHandle<MoveX>;
 
-  explicit SetPositionServer(const rclcpp::NodeOptions & options) : Node("set_position_server", options), position_x_(0.0)
+  explicit SetPositionServer(const rclcpp::NodeOptions & options) : Node("set_position_server", options)
   {
     using namespace std::placeholders;
 
@@ -54,13 +57,18 @@ private:
 
   // std::atomic<double> makes reads/writes thread-safe without a mutex,
   // since position_x_ is written by the odom callback and read by the execute thread
-  std::atomic<double> position_x_;
+  std::atomic<double> position_x_;        // Robot's current x position
+  std::atomic<double> position_y_;        // Robot's current y position
+  std::atomic<double> orientation_theta_; // Robot's current theta orientation
+  std::atomic<double> goal_x_{0.0}, goal_y_{0.0}, goal_theta_{0.0};
+  std::atomic<double> distance;
+  std::atomic<double> delta_theta;
 
   // 3 callbacks (instead of the single Python ActionServer callback)
   // handle_goal → decides whether to accept or reject the incoming goal
   rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const MoveX::Goal> goal)
   {
-    RCLCPP_INFO(this->get_logger(), "Received goal: %f", goal->goal_x);
+    RCLCPP_INFO(this->get_logger(), "Received goal: %f, %f, %f", goal->goal_x, goal->goal_y, goal->goal_theta);
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
   }
 
@@ -86,13 +94,17 @@ private:
     RCLCPP_INFO(this->get_logger(), "Executing goal...");
 
     auto feedback_msg = std::make_shared<MoveX::Feedback>();
-    double goal = goal_handle->get_goal()->goal_x;
 
-    geometry_msgs::msg::Twist vel_x;   
-    geometry_msgs::msg::Twist stop;    
-    vel_x.linear.x = (position_x_ < goal) ? 0.5 : -0.5;
 
-    while (std::abs(position_x_.load() - goal) > 0.1) {
+    geometry_msgs::msg::Twist vel;
+    geometry_msgs::msg::Twist stop;
+    goal_x_ = goal_handle->get_goal()->goal_x;
+    goal_y_ = goal_handle->get_goal()->goal_y;
+    goal_theta_ = goal_handle->get_goal()->goal_theta;
+    vel.linear.x = (position_x_ < goal_x_) ? 0.5 : -0.5;
+    // TODO: lin and ang velocity control
+
+    while (distance > 0.05 || delta_theta > 0.05) {
       // Check for cancel requests
       if (goal_handle->is_canceling()) {
         vel_publisher_->publish(stop);
@@ -103,10 +115,11 @@ private:
         return;
       }
 
-      vel_publisher_->publish(vel_x);
+      vel_publisher_->publish(vel);
 
       // Publish feedback
-      feedback_msg->remaining_x = std::abs(position_x_.load() - goal);
+      feedback_msg->remaining_distance = distance;
+      feedback_msg->remaining_theta = delta_theta;
       goal_handle->publish_feedback(feedback_msg);
 
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -117,12 +130,24 @@ private:
     auto result = std::make_shared<MoveX::Result>();
     result->success = true;
     result->final_x = position_x_.load();
+    result->final_y = position_y_.load();
+    result->final_theta = orientation_theta_.load();
     goal_handle->succeed(result);
   }
 
   void get_position_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
   {
-    position_x_.store(msg->pose.pose.position.x);
+    double curr_x = msg->pose.pose.position.x;
+    double curr_y = msg->pose.pose.position.y;
+    double yaw = tf2::getYaw(msg->pose.pose.orientation);
+    position_x_.store(curr_x);
+    position_y_.store(curr_y);
+    orientation_theta_.store(yaw);
+
+    distance.store(std::hypot(goal_x_.load() - curr_x, goal_y_.load() - curr_y));
+    // Normalize angle difference to [-pi, pi]
+    double angle_diff = goal_theta_.load() - yaw;
+    delta_theta.store(std::abs(std::atan2(std::sin(angle_diff), std::cos(angle_diff))));
   }
 };
 
