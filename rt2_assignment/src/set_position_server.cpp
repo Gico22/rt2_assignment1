@@ -5,6 +5,8 @@
 #include "geometry_msgs/msg/twist.hpp"
 #include "rt2_interfaces/action/move_x.hpp"
 #include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <atomic>   // thread-safe position
 #include <thread>   // std::thread for execute_callback
 #include <chrono>   
@@ -94,13 +96,15 @@ private:
     RCLCPP_INFO(this->get_logger(), "Executing goal...");
 
     auto feedback_msg = std::make_shared<MoveX::Feedback>();
-
+    auto goal = goal_handle->get_goal();
 
     geometry_msgs::msg::Twist vel;
     geometry_msgs::msg::Twist stop;
-    goal_x_ = goal_handle->get_goal()->goal_x;
-    goal_y_ = goal_handle->get_goal()->goal_y;
-    goal_theta_ = goal_handle->get_goal()->goal_theta;
+    goal_x_ = goal->goal_x;
+    goal_y_ = goal->goal_y;
+    goal_theta_ = goal->goal_theta;
+
+    // Control loop
     vel.linear.x = (position_x_ < goal_x_) ? 0.5 : -0.5;
     // TODO: lin and ang velocity control
 
@@ -145,9 +149,8 @@ private:
     orientation_theta_.store(yaw);
 
     distance.store(std::hypot(goal_x_.load() - curr_x, goal_y_.load() - curr_y));
-    // Normalize angle difference to [-pi, pi]
     double angle_diff = goal_theta_.load() - yaw;
-    delta_theta.store(std::abs(std::atan2(std::sin(angle_diff), std::cos(angle_diff))));
+    delta_theta.store(std::abs(std::atan2(std::sin(angle_diff), std::cos(angle_diff))));  // Normalize angle difference to [-pi, pi]
   }
 };
 
