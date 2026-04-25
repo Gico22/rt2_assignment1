@@ -10,6 +10,7 @@
 #include <atomic>
 #include <iostream>
 #include <string>
+#include <cmath>
 
 namespace rt2_assignment
 {
@@ -46,7 +47,7 @@ private:
   std::thread input_thread_;
   std::atomic<bool> running_{true};
   std::atomic<bool> goal_active_{false};
-  GoalHandle::SharedPtr current_goal_handle_{nullptr};  // guarded by goal_active_
+  GoalHandle::SharedPtr current_goal_handle_{nullptr};
   rclcpp_action::Client<MoveX>::SharedPtr _action_client;
   std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_broadcaster_;
 
@@ -80,10 +81,10 @@ private:
         std::getline(std::cin, raw);
         if (raw == "c") { cancel_current_goal(); continue; }
         ty = std::stod(raw);
-        if (tx < -10 || tx > 10) {std::cout << "\nInvalid input, y must belong to [-10, 10]" << std::endl; continue;}
+        if (ty < -10 || ty > 10) {std::cout << "\nInvalid input, y must belong to [-10, 10]" << std::endl; continue;}
 
         // Get Theta
-        std::cout << "Enter target Theta in radians (or 'c' to cancel): ";
+        std::cout << "Enter target Theta in degrees (or 'c' to cancel): ";
         std::getline(std::cin, raw);
         if (raw == "c") { cancel_current_goal(); continue; }
         tth = std::stod(raw);
@@ -92,7 +93,8 @@ private:
         std::cout << "Sending Goal: (" << tx << ", " << ty << ", " << tth << "). Proceed? (y/n): ";
         std::getline(std::cin, raw);
         if (raw == "y") {
-          send_goal(tx, ty, tth);
+          send_goal(tx, ty, tth*(M_PI/180));
+          std::cout << "Goal sent." << std::endl;
         } else {
           std::cout << "Goal discarded." << std::endl;
         }
@@ -108,17 +110,20 @@ private:
   void send_goal(double x, double y, double theta)
   {
     // Wait for server availability
+    RCLCPP_INFO(this->get_logger(), "Waiting for action server...");
     if (!_action_client->wait_for_action_server(std::chrono::seconds(5))) {
       RCLCPP_ERROR(this->get_logger(), "Action server not available");
       return;
     }
 
+    goal_active_ = true;   // block new goals until this one finishes
+
+    RCLCPP_INFO(this->get_logger(), "Sending goal to server: %.2f, %.2f, %.2f", x, y, theta);
+
     auto goal_msg = MoveX::Goal();
     goal_msg.goal_x = x;
     goal_msg.goal_y = y;
     goal_msg.goal_theta = theta;
-
-    goal_active_ = true;   // block new goals until this one finishes
 
     // Send_goal. Everything is wrapped in a struct
     auto options = rclcpp_action::Client<MoveX>::SendGoalOptions();
@@ -130,6 +135,7 @@ private:
     broadcast_goal_frame(x, y, theta);
     // Send goal, thread safe
     _action_client->async_send_goal(goal_msg, options);
+    RCLCPP_INFO(this->get_logger(), "async_send_goal called");
   }
 
   void cancel_current_goal()
@@ -157,7 +163,7 @@ private:
   // C++ gets both the goal_handle (for cancel) and the feedback payload
   void feedback_callback(GoalHandle::SharedPtr, const std::shared_ptr<const MoveX::Feedback> feedback)
   {
-    RCLCPP_INFO(this->get_logger(), "Received feedback:\n Remaining distance: %f m\n Remaining Theta: %f rad", feedback->remaining_distance, feedback->remaining_theta);
+    RCLCPP_INFO(this->get_logger(), "Received feedback:\n Remaining distance: %f m\n Remaining Theta: %f °", feedback->remaining_distance, feedback->remaining_theta);
   }
 
   // Wraps result + status + goal_id in a WrappedResult struct
