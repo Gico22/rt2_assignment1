@@ -70,7 +70,7 @@ source install/setup.bash
 
 **Terminal 1 — Gazebo world**
 ```bash
-ros2 launch bme_gazebo_sensors spawn_robot.launch.py
+ros2 launch bme_gazebo_sensors spawn_robot_ex.launch.py
 ```
 
 **Terminal 2 — Action server**

@@ -45,10 +45,10 @@ public:
     // Create velocity publisher
     vel_publisher_ = this->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
 
+    // Create /odom subscriber
     pos_subscriber_ = this->create_subscription<nav_msgs::msg::Odometry>("/odom", 10, std::bind(&SetPositionServer::get_position_callback, this, _1), sub_options);
 
-    // tf2 setup: the Buffer stores the transform tree,
-    // the TransformListener populates it by subscribing to /tf and /tf_static
+    // tf2 setup
     tf_buffer_   = std::make_shared<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
@@ -66,26 +66,23 @@ private:
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-  geometry_msgs::msg::TransformStamped odom_t;
 
   // 3 callbacks
-  // handle_goal → decides whether to accept or reject the incoming goal
+  // handle_goal: accept the incoming goal, since the boundaries control is performed in the client node
   rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID & /*uuid*/, std::shared_ptr<const MoveX::Goal> goal)
   {
     RCLCPP_INFO(this->get_logger(), "Received goal: %.2f, %.2f, %.2f", goal->goal_x, goal->goal_y, goal->goal_theta);
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
   }
 
-  // handle_cancel → decides whether to accept a cancel request
+  // handle_cancel: accept a cancel request
   rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<GoalHandle> goal_handle)
   {
     RCLCPP_INFO(this->get_logger(), "Cancel request received");
     return rclcpp_action::CancelResponse::ACCEPT;
   }
 
-  // handle_accepted fires right after the goal is accepted.
-  // We spawn a detached thread so this callback returns immediately,
-  // freeing the executor (the same reason Python used MultiThreadedExecutor)
+  // Spawn a detached thread so this callback returns immediately
   void handle_accepted(const std::shared_ptr<GoalHandle> goal_handle)
   {
      RCLCPP_INFO(this->get_logger(), "handle_accepted called, spawning thread");
@@ -150,7 +147,7 @@ private:
 
     // 3) Rotate to final theta
     while (rclcpp::ok()) {
-      if (goal_handle->is_canceling()) { return cancel_execution(goal_handle, stop); }
+      if (goal_handle->is_canceling()) {return cancel_execution(goal_handle, stop);}
 
       auto t = lookup("world", "base_link");
       if (!t) { std::this_thread::sleep_for(std::chrono::milliseconds(100)); continue; }

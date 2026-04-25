@@ -19,7 +19,6 @@ class SetPositionClient : public rclcpp::Node
 {
 public:
   using MoveX = rt2_interfaces::action::MoveX;
-  // GoalHandle is a token to track/cancel an active goal
   using GoalHandle = rclcpp_action::ClientGoalHandle<MoveX>;
 
   // Constructor must accept NodeOptions for components
@@ -35,6 +34,7 @@ public:
     // Create static broadcaster
     static_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
   }
+
   // Destructor
   ~SetPositionClient()
   {
@@ -72,21 +72,21 @@ private:
         // Get X
         std::cout << "Enter target -10 < x < 10 (or 'c' to cancel): ";
         std::getline(std::cin, raw);
-        if (raw == "c") { cancel_current_goal(); continue; }
+        if (raw == "c") {cancel_current_goal(); continue;}
         tx = std::stod(raw);
         if (tx < -10 || tx > 10) {std::cout << "\nInvalid input, x must belong to [-10, 10]" << std::endl; continue;}
 
         // Get Y
         std::cout << "Enter target -10 < y < 10 (or 'c' to cancel): ";
         std::getline(std::cin, raw);
-        if (raw == "c") { cancel_current_goal(); continue; }
+        if (raw == "c") {cancel_current_goal(); continue;}
         ty = std::stod(raw);
         if (ty < -10 || ty > 10) {std::cout << "\nInvalid input, y must belong to [-10, 10]" << std::endl; continue;}
 
         // Get Theta
         std::cout << "Enter target Theta in degrees (or 'c' to cancel): ";
         std::getline(std::cin, raw);
-        if (raw == "c") { cancel_current_goal(); continue; }
+        if (raw == "c") {cancel_current_goal(); continue;}
         tth = std::stod(raw);
 
         // Final confirmation and validation
@@ -135,7 +135,7 @@ private:
     broadcast_goal_frame(x, y, theta);
     // Send goal, thread safe
     _action_client->async_send_goal(goal_msg, options);
-    RCLCPP_INFO(this->get_logger(), "async_send_goal called");
+    RCLCPP_INFO(this->get_logger(), "goal sent");
   }
 
   void cancel_current_goal()
@@ -144,11 +144,10 @@ private:
       std::cout << "No active goal to cancel\n";
       return;
     }
-    // cancel_goal_async is also thread-safe
     _action_client->async_cancel_goal(current_goal_handle_);
   }
 
-  // The goal_handle is passed directly (no .result() unwrapping needed)
+  // The goal_handle is passed directly
   void goal_response_callback(const GoalHandle::SharedPtr & goal_handle)
   {
     if (!goal_handle) {
@@ -160,13 +159,11 @@ private:
     current_goal_handle_ = goal_handle;   // save for cancellation
   }
 
-  // C++ gets both the goal_handle (for cancel) and the feedback payload
   void feedback_callback(GoalHandle::SharedPtr, const std::shared_ptr<const MoveX::Feedback> feedback)
   {
     RCLCPP_INFO(this->get_logger(), "Received feedback:\n Remaining distance: %f m\n Remaining Theta: %f °", feedback->remaining_distance, feedback->remaining_theta);
   }
 
-  // Wraps result + status + goal_id in a WrappedResult struct
   void get_result_callback(const GoalHandle::WrappedResult & result)
   {
     RCLCPP_INFO(this->get_logger(),
