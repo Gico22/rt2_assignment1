@@ -185,7 +185,7 @@ private:
   {
     geometry_msgs::msg::TransformStamped t;
 
-    t.header.stamp = this->get_clock()->now();
+    t.header.stamp = msg->header.stamp;
     t.header.frame_id = "world";
     t.child_frame_id  = "base_footprint";
 
